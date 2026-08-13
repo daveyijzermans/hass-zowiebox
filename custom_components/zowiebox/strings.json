@@ -27,18 +27,33 @@
   },
   "entity": {
     "binary_sensor": {
-      "encoder_signal": { "name": "Encoder signal" },
-      "encoder_signal_steady": { "name": "Encoder signal steady" }
+      "encoder_signal": {
+        "name": "Encoder signal"
+      },
+      "encoder_signal_steady": {
+        "name": "Encoder signal steady"
+      }
     },
     "select": {
-      "work_mode": { "name": "Work mode" },
-      "decode_source": { "name": "Decode source" }
+      "work_mode": {
+        "name": "Work mode"
+      },
+      "decode_source": {
+        "name": "Decode source"
+      },
+      "stream_source": {
+        "name": "Stream source"
+      }
     },
     "sensor": {
-      "input_resolution": { "name": "Input resolution" }
+      "input_resolution": {
+        "name": "Input resolution"
+      }
     },
     "button": {
-      "reboot": { "name": "Reboot" }
+      "reboot": {
+        "name": "Reboot"
+      }
     }
   }
 }
