@@ -155,11 +155,19 @@ class ZowieboxClient:
         )
         return (payload.get("data") or {}).get("decoder_state")
 
-    async def get_ndi_recv_config(self) -> dict[str, Any]:
+    async def ndi_find(self) -> None:
+        """Kick the box's own NDI discovery (feeds ndi_get_all)."""
+        await self._post("streamplay", "setinfo", "streamplay_ndi", "ndi_find")
+
+    async def ndi_get_all(self) -> list[dict[str, Any]]:
+        """Box-side NDI source list. The ACTIVE subscription is the entry with
+        streamplay_status == 1 — ndi_get_recv_config never carries the
+        subscribed name, so this list is the only truthful status source."""
         payload = await self._post(
-            "streamplay", "getinfo", "streamplay_ndi", "ndi_get_recv_config"
+            "streamplay", "getinfo", "streamplay_ndi", "ndi_get_all"
         )
-        return payload.get("data") or {}
+        data = payload.get("data")
+        return data if isinstance(data, list) else []
 
     async def ndi_recv(self, ndi_name: str) -> None:
         await self._post(

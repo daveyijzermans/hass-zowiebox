@@ -86,31 +86,33 @@ async def _set_decode_source(coordinator: ZowieboxCoordinator, ndi_name: str) ->
     client = coordinator.client
     await _ensure_workmode(coordinator, WORKMODE_DECODER)
     # The box rejects streamplay WRITES ("mpp restart...", status 10000) for a
-    # while after the mode flip even once reads answer — a read probe passes
-    # too early. Retry the subscribe against a deadline, and only trust the
-    # read-back of the recv config.
+    # while after the mode flip even once reads answer. Land ONE accepted
+    # subscribe (retrying through that window), then verify by polling
+    # ndi_get_all for streamplay_status == 1 on the requested source.
     deadline = asyncio.get_event_loop().time() + 90
     last_err: Exception | None = None
+    subscribed = False
     while asyncio.get_event_loop().time() < deadline:
-        try:
-            await client.ndi_recv(ndi_name)
-        except ZowieboxError as err:
-            last_err = err
-            await asyncio.sleep(3)
-            continue
+        if not subscribed:
+            try:
+                await client.ndi_recv(ndi_name)
+                subscribed = True
+            except ZowieboxError as err:
+                last_err = err
+                await asyncio.sleep(3)
+                continue
         await asyncio.sleep(2)
         try:
-            recv = await client.get_ndi_recv_config()
+            for source in await client.ndi_get_all():
+                if (
+                    source.get("name") == ndi_name
+                    and source.get("streamplay_status") == 1
+                ):
+                    return
         except ZowieboxError as err:
             last_err = err
-            await asyncio.sleep(2)
-            continue
-        if recv.get("ndi_name") == ndi_name:
-            return
-        last_err = None
-        await asyncio.sleep(2)
     raise HomeAssistantError(
-        f"{client.host}: NDI subscription to {ndi_name!r} did not stick within 90s: {last_err}"
+        f"{client.host}: NDI stream {ndi_name!r} not playing within 90s: {last_err}"
     )
 
 

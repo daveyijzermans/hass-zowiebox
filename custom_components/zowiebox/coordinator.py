@@ -89,10 +89,14 @@ class ZowieboxCoordinator(DataUpdateCoordinator[ZowieboxData]):
         if data.is_decoder:
             # These calls are rejected outright in Encoder mode (status
             # 00004), so only ask when the device says it is a decoder.
+            # The active subscription is the ndi_get_all entry with
+            # streamplay_status == 1 (ndi_get_recv_config never carries it).
             try:
                 data.decoder_state = await self.client.get_decoder_state()
-                recv = await self.client.get_ndi_recv_config()
-                data.ndi_recv_name = recv.get("ndi_name")
+                for source in await self.client.ndi_get_all():
+                    if source.get("streamplay_status") == 1:
+                        data.ndi_recv_name = source.get("name")
+                        break
             except ZowieboxWorkmodeError:
                 pass  # mode flipped between calls; next poll settles it
             except ZowieboxError as err:
