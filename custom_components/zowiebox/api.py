@@ -63,11 +63,25 @@ class ZowieboxClient:
             body["data"] = data
         if extra:
             body.update(extra)
-        try:
-            async with self._session.post(url, json=body, timeout=TIMEOUT) as resp:
-                payload = await resp.json(content_type=None)
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            raise ZowieboxConnectionError(f"{self._host}: {err}") from err
+        # The box's embedded HTTP server drops idle keep-alive connections
+        # ("Server disconnected"), so force fresh connections and retry once.
+        last_err: Exception | None = None
+        for attempt in range(2):
+            try:
+                async with self._session.post(
+                    url,
+                    json=body,
+                    timeout=TIMEOUT,
+                    headers={"Connection": "close"},
+                ) as resp:
+                    payload = await resp.json(content_type=None)
+                break
+            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+                last_err = err
+                if attempt == 0:
+                    await asyncio.sleep(0.5)
+        else:
+            raise ZowieboxConnectionError(f"{self._host}: {last_err}") from last_err
         if not isinstance(payload, dict):
             raise ZowieboxError(f"{self._host}: unexpected response {payload!r}")
         status = str(payload.get("status", ""))
