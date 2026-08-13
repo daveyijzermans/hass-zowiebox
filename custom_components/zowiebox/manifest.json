@@ -1,0 +1,13 @@
+{
+  "domain": "zowiebox",
+  "name": "ZowieBox",
+  "codeowners": ["@daveyijzermans"],
+  "config_flow": true,
+  "dependencies": ["zeroconf"],
+  "documentation": "https://github.com/daveyijzermans/hass-zowiebox",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/daveyijzermans/hass-zowiebox/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

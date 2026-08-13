@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add ZowieBox",
+        "data": {
+          "host": "Host (IP address)",
+          "name": "Name (optional, defaults to the box's NDI name)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the ZowieBox at that host."
+    },
+    "abort": {
+      "already_configured": "This ZowieBox is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Poll interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "encoder_signal": { "name": "Encoder signal" },
+      "encoder_signal_steady": { "name": "Encoder signal steady" }
+    },
+    "select": {
+      "work_mode": { "name": "Work mode" },
+      "decode_source": { "name": "Decode source" }
+    },
+    "sensor": {
+      "input_resolution": { "name": "Input resolution" }
+    },
+    "button": {
+      "reboot": { "name": "Reboot" }
+    }
+  }
+}
