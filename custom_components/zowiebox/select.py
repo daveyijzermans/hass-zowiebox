@@ -6,9 +6,11 @@ import asyncio
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import ZowieboxConfigEntry
+from .api import ZowieboxError
 from .const import WORKMODE_DECODER, WORKMODE_ENCODER, WORKMODE_LABELS
 from .coordinator import ZowieboxCoordinator
 from .entity import ZowieboxEntity
@@ -32,27 +34,79 @@ async def async_setup_entry(
 
 
 async def _ensure_workmode(coordinator: ZowieboxCoordinator, workmode_id: int) -> None:
-    """Set the work mode and wait until the device reports it (the box takes
-    a few seconds to re-init its pipeline; its own web UI polls the same way)."""
-    if (
-        coordinator.data is not None
-        and coordinator.data.workmode_id == workmode_id
-    ):
-        return
+    """Set the work mode, wait until the device reports it, then enforce the
+    matching HDMI loop-out (Encoder→1 = pass local HDMI to the TV, Decoder→0 =
+    show the decoded stream).
+
+    The box keeps rejecting config writes (status 00009) for several seconds
+    AFTER the new mode already reads back, so the loop-out write retries until
+    the device accepts it — a single early attempt is silently lost.
+    """
     client = coordinator.client
-    await client.set_workmode(workmode_id)
+    # Ask the device, not the (up to poll-interval stale) coordinator snapshot.
+    if await client.get_workmode_id() != workmode_id:
+        await client.set_workmode(workmode_id)
+        for _ in range(20):
+            await asyncio.sleep(1)
+            try:
+                if await client.get_workmode_id() == workmode_id:
+                    break
+            except ZowieboxError:
+                continue  # box may drop requests mid re-init
+        else:
+            raise HomeAssistantError(
+                f"{client.host}: work mode did not reach {workmode_id} within 20s"
+            )
+    loop_out = 1 if workmode_id == WORKMODE_ENCODER else 0
+    last_err: Exception | None = None
+    for _ in range(10):
+        try:
+            output = await client.get_output_info()
+            if output.get("loop_out_switch") == loop_out:
+                return
+            output["loop_out_switch"] = loop_out
+            await client.set_output_info(output)
+            return
+        except ZowieboxError as err:
+            last_err = err
+            await asyncio.sleep(3)
+    raise HomeAssistantError(
+        f"{client.host}: device kept rejecting loop-out={loop_out}: {last_err}"
+    )
+
+
+async def _set_decode_source(coordinator: ZowieboxCoordinator, ndi_name: str) -> None:
+    """Switch to Decoder mode and subscribe to an NDI source, verified.
+
+    After the mode flip the decode pipeline needs settle time beyond the mode
+    read-back — /streamplay calls error until it is ready, and an ndi_recv
+    fired into that window is lost. Probe with get_decoder_state until the
+    pipeline answers, then subscribe and read the config back to confirm.
+    """
+    client = coordinator.client
+    await _ensure_workmode(coordinator, WORKMODE_DECODER)
     for _ in range(15):
-        await asyncio.sleep(1)
-        if await client.get_workmode_id() == workmode_id:
+        try:
+            await client.get_decoder_state()
             break
-    # Encoder mode passes the local HDMI through to the TV; Decoder mode must
-    # output the decoded stream instead of the loop-through.
-    try:
-        output = await client.get_output_info()
-        output["loop_out_switch"] = 1 if workmode_id == WORKMODE_ENCODER else 0
-        await client.set_output_info(output)
-    except Exception:  # noqa: BLE001 — loopout is best-effort during mode settle
-        pass
+        except ZowieboxError:
+            await asyncio.sleep(2)
+    else:
+        raise HomeAssistantError(f"{client.host}: decode pipeline not ready within 30s")
+    last_err: Exception | None = None
+    for _ in range(3):
+        try:
+            await client.ndi_recv(ndi_name)
+            await asyncio.sleep(2)
+            recv = await client.get_ndi_recv_config()
+            if recv.get("ndi_name") == ndi_name:
+                return
+        except ZowieboxError as err:
+            last_err = err
+            await asyncio.sleep(2)
+    raise HomeAssistantError(
+        f"{client.host}: NDI subscription to {ndi_name!r} did not stick: {last_err}"
+    )
 
 
 class WorkModeSelect(ZowieboxEntity, SelectEntity):
@@ -131,8 +185,7 @@ class DecodeSourceSelect(ZowieboxEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         # Selecting a decode source implies Decoder mode (mirrors the box UI).
-        await _ensure_workmode(self.coordinator, WORKMODE_DECODER)
-        await self.coordinator.client.ndi_recv(option)
+        await _set_decode_source(self.coordinator, option)
         await self.coordinator.async_request_refresh()
 
 
@@ -185,6 +238,5 @@ class SourceSelect(ZowieboxEntity, SelectEntity):
         if option == WORKMODE_LABELS[WORKMODE_ENCODER]:
             await _ensure_workmode(self.coordinator, WORKMODE_ENCODER)
         else:
-            await _ensure_workmode(self.coordinator, WORKMODE_DECODER)
-            await self.coordinator.client.ndi_recv(option)
+            await _set_decode_source(self.coordinator, option)
         await self.coordinator.async_request_refresh()
