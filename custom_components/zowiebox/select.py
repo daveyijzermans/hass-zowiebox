@@ -85,27 +85,32 @@ async def _set_decode_source(coordinator: ZowieboxCoordinator, ndi_name: str) ->
     """
     client = coordinator.client
     await _ensure_workmode(coordinator, WORKMODE_DECODER)
-    for _ in range(15):
-        try:
-            await client.get_decoder_state()
-            break
-        except ZowieboxError:
-            await asyncio.sleep(2)
-    else:
-        raise HomeAssistantError(f"{client.host}: decode pipeline not ready within 30s")
+    # The box rejects streamplay WRITES ("mpp restart...", status 10000) for a
+    # while after the mode flip even once reads answer — a read probe passes
+    # too early. Retry the subscribe against a deadline, and only trust the
+    # read-back of the recv config.
+    deadline = asyncio.get_event_loop().time() + 90
     last_err: Exception | None = None
-    for _ in range(3):
+    while asyncio.get_event_loop().time() < deadline:
         try:
             await client.ndi_recv(ndi_name)
-            await asyncio.sleep(2)
+        except ZowieboxError as err:
+            last_err = err
+            await asyncio.sleep(3)
+            continue
+        await asyncio.sleep(2)
+        try:
             recv = await client.get_ndi_recv_config()
-            if recv.get("ndi_name") == ndi_name:
-                return
         except ZowieboxError as err:
             last_err = err
             await asyncio.sleep(2)
+            continue
+        if recv.get("ndi_name") == ndi_name:
+            return
+        last_err = None
+        await asyncio.sleep(2)
     raise HomeAssistantError(
-        f"{client.host}: NDI subscription to {ndi_name!r} did not stick: {last_err}"
+        f"{client.host}: NDI subscription to {ndi_name!r} did not stick within 90s: {last_err}"
     )
 
 
