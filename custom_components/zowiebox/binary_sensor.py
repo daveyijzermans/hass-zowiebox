@@ -34,7 +34,7 @@ class EncoderSignalSensor(ZowieboxEntity, BinarySensorEntity):
     HDMI input, but there is no encoder stream to consume then.
     """
 
-    _attr_translation_key = "encoder_signal"
+    _attr_translation_key = "signal"
 
     def __init__(self, coordinator: ZowieboxCoordinator) -> None:
         super().__init__(coordinator, "encoder_signal")
@@ -65,7 +65,7 @@ class EncoderSignalSensor(ZowieboxEntity, BinarySensorEntity):
 class EncoderSignalSteadySensor(ZowieboxEntity, BinarySensorEntity):
     """Encoder signal continuously present for 5 seconds (blip debounce)."""
 
-    _attr_translation_key = "encoder_signal_steady"
+    _attr_translation_key = "signal_steady"
 
     def __init__(self, coordinator: ZowieboxCoordinator) -> None:
         super().__init__(coordinator, "encoder_signal_steady")

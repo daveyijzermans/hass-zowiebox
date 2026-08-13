@@ -141,7 +141,7 @@ class SourceSelect(ZowieboxEntity, SelectEntity):
     = decode that stream. One entity captures the box's whole routing state,
     so dashboards and automations need a single select per box."""
 
-    _attr_translation_key = "stream_source"
+    _attr_translation_key = "source"
 
     def __init__(
         self, coordinator: ZowieboxCoordinator, discovery: NdiDiscovery
